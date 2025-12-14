@@ -539,6 +539,7 @@ async def add_force_sub_command(client: Client, message: Message):
             chat = await client.get_chat(channel_input)
             channel_id = chat.id
             channel_title = chat.title
+            channel_username = chat.username  # Get username for public channels
         except Exception as e:
             await message.reply_text(f"❌ Could not access channel: {str(e)}\n\nMake sure the bot is admin in the channel!")
             return
@@ -555,19 +556,33 @@ async def add_force_sub_command(client: Client, message: Message):
             await message.reply_text(f"❌ Maximum {MAX_FORCE_SUB_CHANNELS} channels allowed!")
             return
         
-        # Add channel
-        force_sub_channels_collection.insert_one({
+        # Prepare channel data
+        channel_data = {
             "channel_id": channel_id,
             "channel_title": channel_title,
             "added_date": datetime.utcnow()
-        })
+        }
         
-        await message.reply_text(
+        # Add username if it's a public channel
+        if channel_username:
+            channel_data["username"] = channel_username
+        
+        # Add channel
+        force_sub_channels_collection.insert_one(channel_data)
+        
+        # Build success message
+        success_msg = (
             f"✅ **Force Sub Channel Added!**\n\n"
             f"**Channel:** {channel_title}\n"
-            f"**ID:** `{channel_id}`\n\n"
-            f"Users must now join this channel to use the bot."
+            f"**ID:** `{channel_id}`\n"
         )
+        
+        if channel_username:
+            success_msg += f"**Username:** @{channel_username}\n"
+        
+        success_msg += "\nUsers must now join this channel to use the bot."
+        
+        await message.reply_text(success_msg)
     
     except Exception as e:
         await message.reply_text(f"❌ Error: {str(e)}")
@@ -583,23 +598,40 @@ async def remove_force_sub_command(client: Client, message: Message):
     try:
         parts = message.text.split()
         if len(parts) != 2:
-            await message.reply_text("**Usage:** `/removeforcesub <channel_id>`")
+            await message.reply_text(
+                "❌ **Invalid Usage!**\n\n"
+                "**Format:** `/removeforcesub <channel_id>`\n\n"
+                "**Example:** `/removeforcesub -1001234567890`\n\n"
+                "Use /listforcesub to see all channels"
+            )
             return
         
-        channel_id = int(parts[1])
+        try:
+            channel_id = int(parts[1])
+        except ValueError:
+            await message.reply_text("❌ Invalid channel ID! Must be a number like -1001234567890")
+            return
         
         channel = force_sub_channels_collection.find_one({"channel_id": channel_id})
         
         if not channel:
-            await message.reply_text(f"❌ Channel {channel_id} not found in force sub list!")
+            await message.reply_text(
+                f"❌ Channel ID `{channel_id}` not found in force sub list!\n\n"
+                f"Use /listforcesub to see all channels"
+            )
             return
         
         force_sub_channels_collection.delete_one({"channel_id": channel_id})
         
-        await message.reply_text(f"✅ Channel removed from force subscription list!")
+        await message.reply_text(
+            f"✅ **Channel Removed!**\n\n"
+            f"**Channel:** {channel.get('channel_title', 'Unknown')}\n"
+            f"**ID:** `{channel_id}`\n\n"
+            f"Channel removed from force subscription list."
+        )
     
     except Exception as e:
-        await message.reply_text(f"❌ Error: {str(e)}")
+        await message.reply_text(f"❌ Error: {str(e)}\n\nPlease check the channel ID and try again.")
 
 
 @Client.on_message(filters.command("listforcesub") & filters.private)

@@ -18,11 +18,12 @@ async def check_force_subscription(client: Client, user_id: int):
     
     for channel in channels:
         try:
-            channel_id = channel['channel_id']
+            # Use username or channel_id as identifier
+            channel_identifier = channel.get('username') or channel.get('channel_id')
             
             # Try to get chat member status
             try:
-                member = await client.get_chat_member(channel_id, user_id)
+                member = await client.get_chat_member(channel_identifier, user_id)
                 # Check if user is actually a member
                 if member.status in ['left', 'kicked', 'banned']:
                     not_subscribed.append(channel)
@@ -31,11 +32,11 @@ async def check_force_subscription(client: Client, user_id: int):
                 not_subscribed.append(channel)
             except Exception as e:
                 # Any other error, assume not subscribed
-                print(f"Error checking subscription for {channel_id}: {e}")
+                print(f"Error checking subscription for {channel_identifier}: {e}")
                 not_subscribed.append(channel)
                 
         except Exception as e:
-            print(f"Error processing channel {channel.get('channel_id')}: {e}")
+            print(f"Error processing channel: {e}")
             not_subscribed.append(channel)
     
     if not_subscribed:
@@ -45,33 +46,35 @@ async def check_force_subscription(client: Client, user_id: int):
         
         for idx, channel in enumerate(not_subscribed):
             try:
-                channel_id = channel['channel_id']
+                # Get channel info
+                channel_identifier = channel.get('username') or channel.get('channel_id')
                 channel_title = channel.get('channel_title', 'Channel')
                 
-                # Try to get invite link
-                try:
-                    chat = await client.get_chat(channel_id)
-                    invite_link = chat.invite_link
-                    
-                    if not invite_link:
-                        # Bot is admin, export link
-                        try:
-                            invite_link = await client.export_chat_invite_link(channel_id)
-                        except:
-                            # Fallback to username or generic link
-                            if chat.username:
-                                invite_link = f"https://t.me/{chat.username}"
-                            else:
-                                invite_link = f"https://t.me/c/{str(channel_id).replace('-100', '')}"
-                    
-                    # Update channel title from actual chat
-                    if chat.title:
-                        channel_title = chat.title[:20]  # Limit length
-                    
-                except Exception as e:
-                    print(f"Error getting chat info: {e}")
-                    # Use stored invite link or create fallback
-                    invite_link = channel.get('invite_link', f"https://t.me/c/{str(channel_id).replace('-100', '')}")
+                # Determine invite link
+                if channel.get('username'):
+                    # Public channel - use username
+                    invite_link = f"https://t.me/{channel['username']}"
+                else:
+                    # Private channel - need to get invite link
+                    try:
+                        chat = await client.get_chat(channel_identifier)
+                        invite_link = chat.invite_link
+                        
+                        if not invite_link:
+                            # Try to export link if bot is admin
+                            try:
+                                invite_link = await client.export_chat_invite_link(channel_identifier)
+                            except:
+                                # Fallback
+                                invite_link = f"https://t.me/c/{str(channel.get('channel_id', '')).replace('-100', '')}"
+                        
+                        # Update title from chat if available
+                        if chat.title:
+                            channel_title = chat.title[:20]
+                    except Exception as e:
+                        print(f"Error getting chat info: {e}")
+                        # Use stored invite link or skip
+                        invite_link = channel.get('invite_link', f"https://t.me/{channel.get('username', '')}")
                 
                 # Create button
                 button = InlineKeyboardButton(f"📢 {channel_title}", url=invite_link)
@@ -115,4 +118,5 @@ async def verify_subscription_callback(client: Client, callback_query: CallbackQ
         await callback_query.answer("❌ Please join all channels first!", show_alert=True)
         # Update buttons in case invite links changed
         await callback_query.message.edit_reply_markup(buttons)
+
 
