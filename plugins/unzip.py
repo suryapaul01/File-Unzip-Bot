@@ -293,11 +293,16 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
             return
         
         # Extract archive
-        await status_msg.edit_text("📂 Extracting archive...\n\nUse /cancel to stop")
-        success, extract_dir, error_msg = await extract_archive(file_path, password)
-        
-        if not success:
-            await status_msg.edit_text(error_msg or "❌ Extraction failed!")
+        try:
+            await status_msg.edit_text("📂 Extracting archive...\n\nUse /cancel to stop")
+            success, extract_dir, error_msg = await extract_archive(file_path, password)
+            
+            if not success:
+                await status_msg.edit_text(error_msg or "❌ Extraction failed!")
+                await cleanup_files([file_path])
+                return
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Extraction error: {str(e)}")
             await cleanup_files([file_path])
             return
         
@@ -308,8 +313,13 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
             return
         
         # Get extracted files
-        await status_msg.edit_text("📋 Getting extracted files...\n\nUse /cancel to stop")
-        extracted_files = await get_all_files(extract_dir, max_files=50)
+        try:
+            await status_msg.edit_text("📋 Getting extracted files...\n\nUse /cancel to stop")
+            extracted_files = await get_all_files(extract_dir, max_files=50)
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Error reading extracted files: {str(e)}")
+            await cleanup_files([file_path, extract_dir])
+            return
         
         if not extracted_files:
             await status_msg.edit_text("❌ No files found in archive!")

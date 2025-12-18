@@ -45,16 +45,11 @@ async def extract_archive(file_path, password=None):
     Extract archive file to a shorter path to avoid Windows path limits
     Returns: (success: bool, extracted_dir: str, error_msg: str)
     """
-    try:
-        file_name = os.path.basename(file_path)
-        ext = get_file_extension(file_name)
-        
-        # Create extraction directory with VERY short path to avoid Windows 260 char limit
-        # Use random ID instead of full filename
-        random_id = random.randint(100000, 999999)
-        extract_dir = f"downloads/ext_{random_id}"
-        os.makedirs(extract_dir, exist_ok=True)
-        
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    
+    def _extract_sync(file_path, password, extract_dir, ext):
+        """Synchronous extraction logic to run in thread"""
         # Extract based on file type
         if ext == 'zip':
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
@@ -82,7 +77,29 @@ async def extract_archive(file_path, password=None):
                 tar_ref.extractall(extract_dir)
         
         else:
-            return False, None, f"Unsupported archive format: .{ext}"
+            raise ValueError(f"Unsupported archive format: .{ext}")
+    
+    try:
+        file_name = os.path.basename(file_path)
+        ext = get_file_extension(file_name)
+        
+        # Create extraction directory with VERY short path to avoid Windows 260 char limit
+        # Use random ID instead of full filename
+        random_id = random.randint(100000, 999999)
+        extract_dir = f"downloads/ext_{random_id}"
+        os.makedirs(extract_dir, exist_ok=True)
+        
+        # Run extraction in thread executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            await loop.run_in_executor(
+                executor,
+                _extract_sync,
+                file_path,
+                password,
+                extract_dir,
+                ext
+            )
         
         # Check if extraction was successful
         if not os.listdir(extract_dir):
@@ -105,6 +122,10 @@ async def extract_archive(file_path, password=None):
                 "• Extract manually and upload the files"
             )
         return False, None, f"❌ Unsupported feature: {str(e)}"
+    
+    except ValueError as e:
+        # Unsupported format from _extract_sync
+        return False, None, str(e)
     
     except RuntimeError as e:
         error_str = str(e).lower()
