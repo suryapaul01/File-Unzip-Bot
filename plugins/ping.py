@@ -1,13 +1,28 @@
 import time
-import psutil
 import asyncio
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import ADMINS
 
+# Try to import psutil, but make it optional
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 # Bot start time for uptime calculation
 BOT_START_TIME = datetime.now()
+
+
+def is_admin(_, __, message):
+    """Check if user is in ADMINS list"""
+    if not ADMINS:
+        return False
+    return message.from_user and message.from_user.id in ADMINS
+
+admin_filter = filters.create(is_admin)
 
 
 def get_readable_time(seconds: float) -> str:
@@ -52,7 +67,7 @@ def get_readable_bytes(size: int) -> str:
     return f"{size:.2f} PB"
 
 
-@Client.on_message(filters.command("ping") & filters.user(ADMINS))
+@Client.on_message(filters.command("ping") & admin_filter)
 async def ping_command(client: Client, message: Message):
     """Admin-only ping command to check bot status"""
     
@@ -65,27 +80,39 @@ async def ping_command(client: Client, message: Message):
     uptime = datetime.now() - BOT_START_TIME
     uptime_str = get_readable_time(uptime.total_seconds())
     
-    # Get system stats
+    # Get bot info
     try:
-        cpu_usage = psutil.cpu_percent(interval=0.5)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
-        # Get network I/O
-        net_io = psutil.net_io_counters()
-        bytes_sent = get_readable_bytes(net_io.bytes_sent)
-        bytes_recv = get_readable_bytes(net_io.bytes_recv)
-        
-        # Test network speed with a simple API call
-        net_start = time.time()
+        me = await client.get_me()
+        bot_name = me.first_name
+        bot_username = me.username
+        bot_id = me.id
+    except:
+        bot_name = "Unknown"
+        bot_username = "Unknown"
+        bot_id = "Unknown"
+    
+    # Test API latency
+    net_start = time.time()
+    try:
+        await client.get_me()
+        net_latency = (time.time() - net_start) * 1000
+    except:
+        net_latency = -1
+    
+    # Get system stats if psutil is available
+    if PSUTIL_AVAILABLE:
         try:
-            me = await client.get_me()
-            net_latency = (time.time() - net_start) * 1000
-        except:
-            net_latency = -1
-        
-        # Build status message
-        status_text = f"""
+            cpu_usage = psutil.cpu_percent(interval=0.5)
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # Get network I/O
+            net_io = psutil.net_io_counters()
+            bytes_sent = get_readable_bytes(net_io.bytes_sent)
+            bytes_recv = get_readable_bytes(net_io.bytes_recv)
+            
+            # Build full status message
+            status_text = f"""
 🏓 **Pong!**
 
 **⏱️ Response Time:** `{ping_time:.2f} ms`
@@ -110,43 +137,47 @@ async def ping_command(client: Client, message: Message):
 ━━━━━━━━━━━━━━━━━━━━━━
 
 **🤖 Bot Info:**
-**Name:** `{me.first_name}`
-**Username:** @{me.username}
-**Bot ID:** `{me.id}`
+**Name:** `{bot_name}`
+**Username:** @{bot_username}
+**Bot ID:** `{bot_id}`
 
 ✅ **Status:** Bot is running smoothly!
 """
-    except ImportError:
-        # psutil not installed, show basic info
-        try:
-            me = await client.get_me()
-            bot_info = f"**Name:** `{me.first_name}`\n**Username:** @{me.username}\n**Bot ID:** `{me.id}`"
-        except:
-            bot_info = "Unable to fetch bot info"
-        
-        status_text = f"""
+        except Exception as e:
+            status_text = f"""
 🏓 **Pong!**
 
 **⏱️ Response Time:** `{ping_time:.2f} ms`
+**🌐 API Latency:** `{net_latency:.2f} ms`
 **⏰ Bot Uptime:** `{uptime_str}`
 
 **🤖 Bot Info:**
-{bot_info}
-
-⚠️ _Install psutil for detailed system stats_
-
-✅ **Status:** Bot is running!
-"""
-    except Exception as e:
-        status_text = f"""
-🏓 **Pong!**
-
-**⏱️ Response Time:** `{ping_time:.2f} ms`
-**⏰ Bot Uptime:** `{uptime_str}`
+**Name:** `{bot_name}`
+**Username:** @{bot_username}
+**Bot ID:** `{bot_id}`
 
 ⚠️ **Error getting system stats:** `{str(e)}`
 
 ✅ **Status:** Bot is running!
 """
+    else:
+        # psutil not available
+        status_text = f"""
+🏓 **Pong!**
+
+**⏱️ Response Time:** `{ping_time:.2f} ms`
+**🌐 API Latency:** `{net_latency:.2f} ms`
+**⏰ Bot Uptime:** `{uptime_str}`
+
+**🤖 Bot Info:**
+**Name:** `{bot_name}`
+**Username:** @{bot_username}
+**Bot ID:** `{bot_id}`
+
+⚠️ _Install psutil for detailed system stats_
+
+✅ **Status:** Bot is running!
+"""
     
     await status_msg.edit_text(status_text)
+
