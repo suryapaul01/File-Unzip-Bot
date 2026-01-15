@@ -368,7 +368,6 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
         #Get user settings for file transformations
         from database.user_settings_helper import get_user_settings
         from utils.filename_transformer import transform_filename, substitute_caption_variables, apply_replacements, get_file_type
-        from utils.helpers import format_size
         from pyrogram.types import MessageEntity
         
         settings = get_user_settings(user_id)
@@ -445,6 +444,11 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
                 # Send file according to upload type setting
                 sent_msg = None
                 
+                # Get thumbnail and validate it exists
+                thumb_path = settings.get('thumbnail')
+                if thumb_path and not os.path.isfile(thumb_path):
+                    thumb_path = None  # Reset if file doesn't exist
+                
                 if settings.get('upload_as_document', True):
                     # Send as document
                     sent_msg = await client.send_document(
@@ -452,7 +456,7 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
                         document=file,
                         caption=caption,
                         caption_entities=caption_entities,
-                        thumb=settings.get('thumbnail')
+                        thumb=thumb_path
                     )
                 else:
                     # Send as media (photo/video) based on file type
@@ -471,7 +475,7 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
                             video=file,
                             caption=caption,
                             caption_entities=caption_entities,
-                            thumb=settings.get('thumbnail')
+                            thumb=thumb_path
                         )
                     else:
                         # Fall back to document for unknown types
@@ -480,7 +484,7 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
                             document=file,
                             caption=caption,
                             caption_entities=caption_entities,
-                            thumb=settings.get('thumbnail')
+                            thumb=thumb_path
                         )
                 
                 # Only count as sent after successful delivery to user
