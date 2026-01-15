@@ -368,6 +368,7 @@ async def handle_file_extraction(client: Client, message: Message, file_message:
         #Get user settings for file transformations
         from database.user_settings_helper import get_user_settings
         from utils.filename_transformer import transform_filename, substitute_caption_variables, apply_replacements, get_file_type
+        from utils.helpers import format_size
         from pyrogram.types import MessageEntity
         
         settings = get_user_settings(user_id)
